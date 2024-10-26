@@ -47,6 +47,8 @@ public:
     virtual std::string getHelp() const = 0;
 };
 
+class Terminal;
+
 class HelpCommand : public Command {
 private:
     const std::map<std::string, std::unique_ptr<Command>>& commands;
@@ -113,6 +115,7 @@ private:
             {"sort", "Sortiert eine Liste von Elementen. Verwendung: sort <Element1> <Element2> ..."},
             {"base64", "Kodiert oder dekodiert Text in Base64. Verwendung: base64 <encode|decode> <Text>"},
             {"hash", "Berechnet den Hash-Wert eines Textes. Verwendung: hash <Text>"},
+            {"edit", "Öffnet einen einfachen Texteditor. Verwendung: edit <dateiname>"},
             {"exit", "Beendet das Terminal. Verwendung: exit"}
         };
     }
@@ -152,6 +155,64 @@ private:
     std::mutex mutex;
     std::condition_variable condition;
     std::atomic<bool> shouldStop{false};
+};
+
+class SimpleTextEditor {
+private:
+    std::vector<std::string> lines;
+    std::string filename;
+
+public:
+    SimpleTextEditor(const std::string& fname) : filename(fname) {
+        std::ifstream file(filename);
+        std::string line;
+        while (std::getline(file, line)) {
+            lines.push_back(line);
+        }
+    }
+
+    void display() {
+        for (size_t i = 0; i < lines.size(); ++i) {
+            std::cout << i + 1 << ": " << lines[i] << std::endl;
+        }
+    }
+
+    void addLine(const std::string& line) {
+        lines.push_back(line);
+    }
+
+    void editLine(size_t lineNumber, const std::string& newContent) {
+        if (lineNumber > 0 && lineNumber <= lines.size()) {
+            lines[lineNumber - 1] = newContent;
+        }
+    }
+
+    void deleteLine(size_t lineNumber) {
+        if (lineNumber > 0 && lineNumber <= lines.size()) {
+            lines.erase(lines.begin() + lineNumber - 1);
+        }
+    }
+
+    void save() {
+        std::ofstream file(filename);
+        for (const auto& line : lines) {
+            file << line << std::endl;
+        }
+    }
+};
+
+class EditCommand : public Command {
+private:
+    Terminal& terminal;
+
+public:
+    EditCommand(Terminal& t) : terminal(t) {}
+
+    void execute(const std::vector<std::string>& args) override;
+
+    std::string getHelp() const override {
+        return "Öffnet einen einfachen Texteditor. Verwendung: edit <dateiname>";
+    }
 };
 
 class Terminal {
@@ -196,6 +257,55 @@ public:
         }
     }
 
+    void editFile(const std::vector<std::string>& args) {
+        if (args.empty()) {
+            std::cout << "Verwendung: edit <dateiname>\n";
+            return;
+        }
+
+        SimpleTextEditor editor(args[0]);
+        std::string command;
+
+        while (true) {
+            editor.display();
+            std::cout << "\nEditor-Befehle: add, edit <zeilennummer>, delete <zeilennummer>, save, quit\n";
+            std::cout << "Befehl: ";
+            std::getline(std::cin, command);
+
+            std::istringstream iss(command);
+            std::vector<std::string> tokens;
+            std::string token;
+            while (iss >> token) {
+                tokens.push_back(token);
+            }
+
+            if (tokens.empty()) continue;
+
+            if (tokens[0] == "add") {
+                std::cout << "Neue Zeile: ";
+                std::string newLine;
+                std::getline(std::cin, newLine);
+                editor.addLine(newLine);
+            } else if (tokens[0] == "edit" && tokens.size() > 1) {
+                size_t lineNumber = std::stoul(tokens[1]);
+                std::cout << "Neue Inhalte: ";
+                std::string newContent;
+                std::getline(std::cin, newContent);
+                editor.editLine(lineNumber, newContent);
+            } else if (tokens[0] == "delete" && tokens.size() > 1) {
+                size_t lineNumber = std::stoul(tokens[1]);
+                editor.deleteLine(lineNumber);
+            } else if (tokens[0] == "save") {
+                editor.save();
+                std::cout << "Datei gespeichert.\n";
+            } else if (tokens[0] == "quit") {
+                break;
+            } else {
+                std::cout << "Unbekannter Befehl.\n";
+            }
+        }
+    }
+
 private:
     std::vector<std::string> commandHistory;
     std::map<std::string, std::string> aliases;
@@ -207,6 +317,7 @@ private:
 
     void registerCommands() {
         commands["help"] = std::make_unique<HelpCommand>(commands);
+        commands["edit"] = std::make_unique<EditCommand>(*this);
     }
 
     void printWelcomeMessage() {
@@ -246,7 +357,7 @@ private:
         std::string line;
         while (std::getline(aliasFile, line)) {
             size_t pos = line.find("=");
-            if (pos != std::string::npos) {
+            if  (pos != std::string::npos) {
                 std::string alias = line.substr(0, pos);
                 std::string command = line.substr(pos + 1);
                 aliases[alias] = command;
@@ -357,7 +468,7 @@ private:
             printAliases();
         } else if (cmd == "setalias") {
             setAlias(args);
-        } else if (cmd  == "create") {
+        } else if (cmd == "create") {
             createFile(args);
         } else if (cmd == "delete") {
             deleteFile(args);
@@ -872,6 +983,10 @@ private:
         return decoded;
     }
 };
+
+void EditCommand::execute(const std::vector<std::string>& args) {
+    terminal.editFile(args);
+}
 
 int main() {
     Terminal terminal;
