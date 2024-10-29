@@ -29,6 +29,7 @@
 #include <charconv>
 #include <bitset>
 #include <numeric>
+#include <execution>
 
 namespace fs = std::filesystem;
 
@@ -226,6 +227,117 @@ public:
     }
 };
 
+class ProcessManager {
+public:
+    static void listProcesses() {
+        system("tasklist");
+    }
+
+    static void killProcess(const std::string& pid) {
+        system(("taskkill /PID " + pid + " /F").c_str());
+    }
+};
+
+class PerformanceMetrics {
+private:
+    static inline std::map<std::string, std::chrono::microseconds> metrics;
+    static inline std::mutex metricsMutex;
+
+public:
+    static void record(const std::string& operation, std::chrono::microseconds duration) {
+        std::lock_guard<std::mutex> lock(metricsMutex);
+        metrics[operation] += duration;
+    }
+
+    static void displayMetrics() {
+        std::lock_guard<std::mutex> lock(metricsMutex);
+        for (const auto& [op, duration] : metrics) {
+            std::cout << op << ": " << duration.count() / 1000.0 << "ms\n";
+        }
+    }
+};
+
+class ThreadPool {
+private:
+    std::vector<std::thread> workers;
+    std::queue<std::function<void()>> tasks;
+    std::mutex queue_mutex;
+    std::condition_variable condition;
+    bool stop;
+
+public:
+    ThreadPool(size_t threads) : stop(false) {
+        for(size_t i = 0; i < threads; ++i)
+            workers.emplace_back([this] {
+                while(true) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(queue_mutex);
+                        condition.wait(lock, [this] { 
+                            return stop || !tasks.empty(); 
+                        });
+                        if(stop && tasks.empty())
+                            return;
+                        task = std::move(tasks.front());
+                        tasks.pop();
+                    }
+                    task();
+                }
+            });
+    }
+
+    template<class F>
+    void enqueue(F&& f) {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            tasks.emplace(std::forward<F>(f));
+        }
+        condition.notify_one();
+    }
+
+    ~ThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(queue_mutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for(std::thread &worker: workers)
+            worker.join();
+    }
+};
+
+class ConcreteCommand : public Command {
+private:
+    std::function<void(const std::vector<std::string>&)> executeFunc;
+    std::string helpText;
+    std::string usageText;
+
+public:
+    ConcreteCommand(
+        std::function<void(const std::vector<std::string>&)> exec,
+        std::string help,
+        std::string usage
+    ) : executeFunc(std::move(exec)),
+        helpText(std::move(help)),
+        usageText(std::move(usage)) {}
+
+    void execute(const std::vector<std::string>& args) override {
+        executeFunc(args);
+    }
+
+    std::string getHelp() const override {
+        return helpText;
+    }
+
+    std::string getUsage() const override {
+        return usageText;
+    }
+
+    bool validateArgs(const std::vector<std::string>& args) const override {
+        return true;
+    }
+};
+
 class Terminal {
 private:
     std::map<std::string, std::unique_ptr<Command>> commands;
@@ -318,6 +430,10 @@ private:
     std::unique_ptr<TaskManager> taskManager;
     std::thread taskThread;
     int historyIndex{-1};
+
+    std::atomic<bool> isRunning{true};
+    std::vector<std::thread> workerThreads;
+    ThreadPool threadPool{4};
 
 public:
     Terminal() : 
@@ -420,6 +536,7 @@ private:
     void registerCommands() {
         commands["help"] = std::make_unique<HelpCommand>(commands);
         commands["edit"] = std::make_unique<EditCommand>(*this);
+        initializeCommands();
     }
 
     void printWelcomeMessage() {
@@ -999,6 +1116,69 @@ private:
         }
 
         return decoded;
+    }
+
+    void initializeCommands() {
+        commands["ps"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { ProcessManager::listProcesses(); },
+            "Lists all running processes",
+            "ps"
+        );
+
+        commands["kill"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { 
+                if (!args.empty()) ProcessManager::killProcess(args[0]); 
+            },
+            "Kills a process with the specified PID",
+            "kill <pid>"
+        );
+
+        commands["benchmark"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { runBenchmark(); },
+            "Runs a system benchmark",
+            "benchmark"
+        );
+
+        commands["stats"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { PerformanceMetrics::displayMetrics(); },
+            "Displays performance metrics",
+            "stats"
+        );
+    }
+
+    void runBenchmark() {
+        auto start = std::chrono::high_resolution_clock::now();
+        
+        std::vector<fs::path> files;
+        std::mutex filesMutex;
+        
+        std::for_each(std::execution::par,
+            fs::recursive_directory_iterator(fs::current_path()),
+            fs::recursive_directory_iterator(),
+            [&](const auto& entry) {
+                if (entry.is_regular_file()) {
+                    std::lock_guard<std::mutex> lock(filesMutex);
+                    files.push_back(entry.path());
+                }
+            });
+
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+        
+        std::cout << "Benchmark Results:\n";
+        std::cout << "Files scanned: " << files.size() << "\n";
+        std::cout << "Time taken: " << duration.count() << "ms\n";
+    }
+
+    void executeCommandAsync(const std::string& command) {
+        threadPool.enqueue([this, command]() {
+            auto start = std::chrono::high_resolution_clock::now();
+            executeCommand(command);
+            auto end = std::chrono::high_resolution_clock::now();
+            
+            PerformanceMetrics::record(command, 
+                std::chrono::duration_cast<std::chrono::microseconds>(end - start));
+        });
     }
 };
 
