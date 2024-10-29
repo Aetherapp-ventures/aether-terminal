@@ -45,6 +45,8 @@ public:
     virtual ~Command() = default;
     virtual void execute(const std::vector<std::string>& args) = 0;
     virtual std::string getHelp() const = 0;
+    virtual std::string getUsage() const = 0;
+    virtual bool validateArgs(const std::vector<std::string>& args) const = 0;
 };
 
 class Terminal;
@@ -79,6 +81,14 @@ public:
 
     std::string getHelp() const override {
         return "Zeigt Hilfe zu verfügbaren Befehlen an";
+    }
+
+    std::string getUsage() const override {
+        return "help [Befehlsname]";
+    }
+
+    bool validateArgs(const std::vector<std::string>& args) const override {
+        return args.empty() || args.size() == 1;
     }
 
 private:
@@ -209,18 +219,118 @@ public:
     EditCommand(Terminal& t) : terminal(t) {}
 
     void execute(const std::vector<std::string>& args) override;
-
-    std::string getHelp() const override {
-        return "Öffnet einen einfachen Texteditor. Verwendung: edit <dateiname>";
+    std::string getHelp() const override { return "Öffnet einen einfachen Texteditor"; }
+    std::string getUsage() const override { return "edit <dateiname>"; }
+    bool validateArgs(const std::vector<std::string>& args) const override {
+        return !args.empty() && args.size() == 1;
     }
 };
 
 class Terminal {
+private:
+    std::map<std::string, std::unique_ptr<Command>> commands;
+
+    void executeCommand(const std::string& command) {
+        try {
+            std::vector<std::string> args;
+            std::istringstream iss(command);
+            std::string arg;
+            while (iss >> arg) {
+                args.push_back(arg);
+            }
+
+            if (args.empty()) return;
+
+            std::string cmd = args[0];
+            args.erase(args.begin());
+
+            if (aliases.find(cmd) != aliases.end()) {
+                cmd = aliases[cmd];
+            }
+
+            static const std::map<std::string, std::function<void(const std::vector<std::string>&)>> commandMap = {
+                {"cls", [this](const auto& args) { system("cls"); }},
+                {"echo", [this](const auto& args) { handleEcho(args); }},
+                {"time", [this](const auto& args) { displayCurrentTime(); }},
+                {"calc", [this](const auto& args) { system("start calc"); }},
+                {"history", [this](const auto& args) { printHistory(); }},
+                {"alias", [this](const auto& args) { printAliases(); }},
+                {"setalias", [this](const auto& args) { setAlias(args); }},
+                {"create", [this](const auto& args) { createFile(args); }},
+                {"delete", [this](const auto& args) { deleteFile(args); }},
+                {"list", [this](const auto& args) { listFiles(); }},
+                {"ping", [this](const auto& args) { pingHost(args); }},
+                {"random", [this](const auto& args) { generateRandomNumber(); }},
+                {"sleep", [this](const auto& args) { sleepForSeconds(args); }},
+                {"theme", [this](const auto& args) { switchTheme(); }},
+                {"writefile", [this](const auto& args) { writeToFile(args); }},
+                {"readfile", [this](const auto& args) { readFromFile(args); }},
+                {"encrypt", [this](const auto& args) { encryptFile(args); }},
+                {"decrypt", [this](const auto& args) { decryptFile(args); }},
+                {"compress", [this](const auto& args) { compressFile(args); }},
+                {"decompress", [this](const auto& args) { decompressFile(args); }},
+                {"search", [this](const auto& args) { searchFiles(args); }},
+                {"schedule", [this](const auto& args) { scheduleCommand(args); }},
+                {"task", [this](const auto& args) { manageTask(args); }},
+                {"network", [this](const auto& args) { showNetworkInfo(); }},
+                {"sysinfo", [this](const auto& args) { showSystemInfo(); }},
+                {"weather", [this](const auto& args) { showWeather(args); }},
+                {"math", [this](const auto& args) { performMathOperation(args); }},
+                {"sort", [this](const auto& args) { sortItems(args); }},
+                {"base64", [this](const auto& args) { base64Operation(args); }},
+                {"hash", [this](const auto& args) { hashString(args); }}
+            };
+
+            auto it = commandMap.find(cmd);
+            if (it != commandMap.end()) {
+                it->second(args);
+            } else if (commands.find(cmd) != commands.end()) {
+                commands[cmd]->execute(args);
+            } else {
+                throw std::runtime_error("Unbekannter Befehl: " + cmd);
+            }
+        } catch (const std::exception& e) {
+            std::cerr << "Fehler bei der Ausführung: " << e.what() << std::endl;
+        }
+    }
+
+    void handleEcho(const std::vector<std::string>& args) {
+        std::string message = std::accumulate(
+            args.begin(), args.end(),
+            std::string{},
+            [](std::string a, const std::string& b) {
+                return std::move(a) + (a.empty() ? "" : " ") + b;
+            }
+        );
+        std::cout << message << std::endl;
+    }
+
+    std::map<std::string, int> defaultTheme{
+        {"promptTextColor", 10},
+        {"promptBgColor", 0},
+        {"defaultTextColor", 7},
+        {"defaultBgColor", 0}
+    };
+
+    std::map<std::string, int> currentTheme{defaultTheme};
+    std::vector<std::string> commandHistory;
+    std::map<std::string, std::string> aliases;
+    std::unique_ptr<TaskManager> taskManager;
+    std::thread taskThread;
+    int historyIndex{-1};
+
 public:
-    Terminal() : taskThread(&TaskManager::run, &taskManager) {}
+    Terminal() : 
+        taskManager(std::make_unique<TaskManager>()),
+        taskThread([this]() {
+            taskManager->run();
+        })
+    {
+        registerCommands();
+    }
 
     ~Terminal() {
-        taskManager.stop();
+        taskManager->stop();
         if (taskThread.joinable()) {
             taskThread.join();
         }
@@ -307,14 +417,6 @@ public:
     }
 
 private:
-    std::vector<std::string> commandHistory;
-    std::map<std::string, std::string> aliases;
-    std::map<std::string, int> currentTheme;
-    std::map<std::string, std::unique_ptr<Command>> commands;
-    int historyIndex = -1;
-    TaskManager taskManager;
-    std::thread taskThread;
-
     void registerCommands() {
         commands["help"] = std::make_unique<HelpCommand>(commands);
         commands["edit"] = std::make_unique<EditCommand>(*this);
@@ -433,90 +535,6 @@ private:
         commandHistory.push_back(command);
         historyIndex = -1;
         saveCommandHistory();
-    }
-
-    void executeCommand(const std::string& command) {
-        std::vector<std::string> args;
-        std::istringstream iss(command);
-        std::string arg;
-        while (iss >> arg) {
-            args.push_back(arg);
-        }
-
-        if (args.empty()) return;
-
-        std::string cmd = args[0];
-        args.erase(args.begin());
-
-        if (aliases.find(cmd) != aliases.end()) {
-            cmd = aliases[cmd];
-        }
-
-        if (commands.find(cmd) != commands.end()) {
-            commands[cmd]->execute(args);
-        } else if (cmd == "cls") {
-            system("cls");
-        } else if (cmd == "echo") {
-            std::cout << command.substr(5) << std::endl;
-        } else if (cmd == "time") {
-            displayCurrentTime();
-        } else if (cmd == "calc") {
-            system("start calc");
-        } else if (cmd == "history") {
-            printHistory();
-        } else if (cmd == "alias") {
-            printAliases();
-        } else if (cmd == "setalias") {
-            setAlias(args);
-        } else if (cmd == "create") {
-            createFile(args);
-        } else if (cmd == "delete") {
-            deleteFile(args);
-        } else if (cmd == "list") {
-            listFiles();
-        } else if (cmd == "ping") {
-            pingHost(args);
-        } else if (cmd == "random") {
-            generateRandomNumber();
-        } else if (cmd == "sleep") {
-            sleepForSeconds(args);
-        } else if (cmd == "theme") {
-            switchTheme();
-        } else if (cmd == "writefile") {
-            writeToFile(args);
-        } else if (cmd == "readfile") {
-            readFromFile(args);
-        } else if (cmd == "encrypt") {
-            encryptFile(args);
-        } else if (cmd == "decrypt") {
-            decryptFile(args);
-        } else if (cmd == "compress") {
-            compressFile(args);
-        } else if (cmd == "decompress") {
-            decompressFile(args);
-        } else if (cmd == "search") {
-            searchFiles(args);
-        } else if (cmd == "schedule") {
-            scheduleCommand(args);
-        } else if (cmd == "task") {
-            manageTask(args);
-        } else if (cmd == "network") {
-            showNetworkInfo();
-        } else if (cmd == "sysinfo") {
-            showSystemInfo();
-        } else if (cmd == "weather") {
-            showWeather(args);
-        } else if (cmd == "math") {
-            performMathOperation(args);
-        } else if (cmd == "sort") {
-            sortItems(args);
-        } else if (cmd == "base64") {
-            base64Operation(args);
-        } else if (cmd == "hash") {
-            hashString(args);
-        } else {
-            std::cout << "Unbekannter Befehl: " << cmd << std::endl;
-        }
     }
 
     void displayCurrentTime() {
@@ -779,7 +797,7 @@ private:
         for (size_t i = 1; i < args.size(); ++i) {
             cmd += args[i] + " ";
         }
-        taskManager.addTask([this, delay, cmd]() {
+        taskManager->addTask([this, delay, cmd]() {
             std::this_thread::sleep_for(std::chrono::seconds(delay));
             executeCommand(cmd);
         });
@@ -794,7 +812,7 @@ private:
 
         if (args[0] == "start" && args.size() > 1) {
             std::string taskCommand = args[1];
-            taskManager.addTask([this, taskCommand]() {
+            taskManager->addTask([this, taskCommand]() {
                 executeCommand(taskCommand);
             });
             std::cout << "Hintergrundaufgabe gestartet: " << taskCommand << std::endl;
