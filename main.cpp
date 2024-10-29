@@ -41,13 +41,32 @@ public:
     }
 };
 
+class CommandResult {
+public:
+    enum class Status {
+        Success,
+        Error,
+        Warning
+    };
+
+    CommandResult(Status s, std::string msg) : status(s), message(msg) {}
+    
+    Status getStatus() const { return status; }
+    const std::string& getMessage() const { return message; }
+
+private:
+    Status status;
+    std::string message;
+};
+
 class Command {
 public:
     virtual ~Command() = default;
-    virtual void execute(const std::vector<std::string>& args) = 0;
+    virtual CommandResult execute(const std::vector<std::string>& args) = 0;
     virtual std::string getHelp() const = 0;
     virtual std::string getUsage() const = 0;
     virtual bool validateArgs(const std::vector<std::string>& args) const = 0;
+    virtual std::vector<std::string> getCompletions(const std::string& prefix) const { return {}; }
 };
 
 class Terminal;
@@ -62,26 +81,29 @@ public:
         initializeCommandDescriptions();
     }
 
-    void execute(const std::vector<std::string>& args) override {
+    CommandResult execute(const std::vector<std::string>& args) override {
         if (args.empty()) {
-            std::cout << "Verfügbare Befehle:\n";
+            std::cout << "Verfuegbare Befehle:\n";
             for (const auto& [name, description] : commandDescriptions) {
                 std::cout << std::left << std::setw(15) << name << " - " << description << "\n";
             }
-            std::cout << "\nFür detaillierte Informationen zu einem Befehl, geben Sie 'help <Befehlsname>' ein.\n";
+            std::cout << "\nFuer detaillierte Informationen zu einem Befehl, geben Sie 'help <Befehlsname>' ein.\n";
+            return CommandResult(CommandResult::Status::Success, "Displayed available commands");
         } else {
             const std::string& commandName = args[0];
             auto it = commandDescriptions.find(commandName);
             if (it != commandDescriptions.end()) {
                 std::cout << commandName << " - " << it->second << "\n";
+                return CommandResult(CommandResult::Status::Success, "Displayed help for command: " + commandName);
             } else {
-                std::cout << "Kein Hilfetext verfügbar für den Befehl: " << commandName << "\n";
+                std::cout << "Kein Hilfetext verfuegbar fuer den Befehl: " << commandName << "\n";
+                return CommandResult(CommandResult::Status::Error, "No help available for command: " + commandName);
             }
         }
     }
 
     std::string getHelp() const override {
-        return "Zeigt Hilfe zu verfügbaren Befehlen an";
+        return "Zeigt Hilfe zu verfuegbaren Befehlen an";
     }
 
     std::string getUsage() const override {
@@ -96,42 +118,41 @@ private:
     void initializeCommandDescriptions() {
         commandDescriptions = {
             {"help", "Zeigt diese Hilfemeldung an. Verwendung: help [Befehlsname]"},
-            {"cls", "Löscht den Bildschirminhalt. Verwendung: cls"},
+            {"cls", "Loescht den Bildschirminhalt. Verwendung: cls"},
             {"echo", "Gibt einen Text aus. Verwendung: echo <Text>"},
             {"time", "Zeigt die aktuelle Systemzeit an. Verwendung: time"},
-            {"calc", "Öffnet den Windows-Taschenrechner. Verwendung: calc"},
+            {"calc", "Oeffnet den Windows-Taschenrechner. Verwendung: calc"},
             {"history", "Zeigt den Befehlsverlauf an. Verwendung: history"},
             {"alias", "Zeigt alle definierten Aliase an. Verwendung: alias"},
             {"setalias", "Erstellt ein neues Alias. Verwendung: setalias <Aliasname> <Befehl>"},
             {"create", "Erstellt eine neue Datei. Verwendung: create <Dateiname>"},
-            {"delete", "Löscht eine Datei. Verwendung: delete <Dateiname>"},
+            {"delete", "Loescht eine Datei. Verwendung: delete <Dateiname>"},
             {"list", "Listet Dateien im aktuellen Verzeichnis auf. Verwendung: list"},
             {"ping", "Sendet ICMP-Echo-Anforderungen an einen Host. Verwendung: ping <Hostname oder IP>"},
             {"random", "Generiert eine Zufallszahl zwischen 1 und 100. Verwendung: random"},
-            {"sleep", "Pausiert die Ausführung für eine bestimmte Zeit. Verwendung: sleep <Sekunden>"},
-            {"theme", "Ändert das Farbschema des Terminals. Verwendung: theme"},
+            {"sleep", "Pausiert die Ausfuehrung fuer eine bestimmte Zeit. Verwendung: sleep <Sekunden>"},
+            {"theme", "Aendert das Farbschema des Terminals. Verwendung: theme"},
             {"writefile", "Schreibt Text in eine Datei. Verwendung: writefile <Dateiname> <Text>"},
             {"readfile", "Liest den Inhalt einer Datei. Verwendung: readfile <Dateiname>"},
-            {"encrypt", "Verschlüsselt eine Datei. Verwendung: encrypt <Eingabedatei> <Ausgabedatei>"},
-            {"decrypt", "Entschlüsselt eine Datei. Verwendung: decrypt <Eingabedatei> <Ausgabedatei>"},
+            {"encrypt", "Verschluesselt eine Datei. Verwendung: encrypt <Eingabedatei> <Ausgabedatei>"},
+            {"decrypt", "Entschluesselt eine Datei. Verwendung: decrypt <Eingabedatei> <Ausgabedatei>"},
             {"compress", "Komprimiert eine Datei. Verwendung: compress <Eingabedatei> <Ausgabedatei>"},
             {"decompress", "Dekomprimiert eine Datei. Verwendung: decompress <Eingabedatei> <Ausgabedatei>"},
             {"search", "Sucht nach Dateien mit einem bestimmten Muster. Verwendung: search <Suchmuster>"},
-            {"schedule", "Plant die Ausführung eines Befehls. Verwendung: schedule <Verzögerung in Sekunden> <Befehl>"},
+            {"schedule", "Plant die Ausfuehrung eines Befehls. Verwendung: schedule <Verzoegerung in Sekunden> <Befehl>"},
             {"task", "Verwaltet Hintergrundaufgaben. Verwendung: task <start|stop|list> [Befehl]"},
             {"network", "Zeigt Netzwerkinformationen an. Verwendung: network"},
             {"sysinfo", "Zeigt Systeminformationen an. Verwendung: sysinfo"},
-            {"weather", "Zeigt Wetterinformationen für eine Stadt an. Verwendung: weather <Stadt>"},
-            {"math", "Führt einfache mathematische Operationen durch. Verwendung: math <Zahl1> <Operator> <Zahl2>"},
+            {"weather", "Zeigt Wetterinformationen fuer eine Stadt an. Verwendung: weather <Stadt>"},
+            {"math", "Fuehrt einfache mathematische Operationen durch. Verwendung: math <Zahl1> <Operator> <Zahl2>"},
             {"sort", "Sortiert eine Liste von Elementen. Verwendung: sort <Element1> <Element2> ..."},
             {"base64", "Kodiert oder dekodiert Text in Base64. Verwendung: base64 <encode|decode> <Text>"},
             {"hash", "Berechnet den Hash-Wert eines Textes. Verwendung: hash <Text>"},
-            {"edit", "Öffnet einen einfachen Texteditor. Verwendung: edit <dateiname>"},
+            {"edit", "Oeffnet einen einfachen Texteditor. Verwendung: edit <dateiname>"},
             {"exit", "Beendet das Terminal. Verwendung: exit"}
         };
     }
 };
-
 class TaskManager {
 public:
     void addTask(const std::function<void()>& task) {
@@ -219,8 +240,53 @@ private:
 public:
     EditCommand(Terminal& t) : terminal(t) {}
 
-    void execute(const std::vector<std::string>& args) override;
-    std::string getHelp() const override { return "Öffnet einen einfachen Texteditor"; }
+    CommandResult execute(const std::vector<std::string>& args) override {
+        if (!validateArgs(args)) {
+            return CommandResult(CommandResult::Status::Error, "Invalid arguments");
+        }
+        SimpleTextEditor editor(args[0]);
+        std::string command;
+
+        while (true) {
+            editor.display();
+            std::cout << "\nEditor-Befehle: add, edit <zeilennummer>, delete <zeilennummer>, save, quit\n";
+            std::cout << "Befehl: ";
+            std::getline(std::cin, command);
+
+            std::istringstream iss(command);
+            std::vector<std::string> tokens;
+            std::string token;
+            while (iss >> token) {
+                tokens.push_back(token);
+            }
+
+            if (tokens.empty()) continue;
+
+            if (tokens[0] == "quit") break;
+
+            if (tokens[0] == "add") {
+                std::cout << "Neue Zeile: ";
+                std::string newLine;
+                std::getline(std::cin, newLine);
+                editor.addLine(newLine);
+            } else if (tokens[0] == "edit" && tokens.size() > 1) {
+                size_t lineNumber = std::stoul(tokens[1]);
+                std::cout << "Neue Inhalte: ";
+                std::string newContent;
+                std::getline(std::cin, newContent);
+                editor.editLine(lineNumber, newContent);
+            } else if (tokens[0] == "delete" && tokens.size() > 1) {
+                size_t lineNumber = std::stoul(tokens[1]);
+                editor.deleteLine(lineNumber);
+            } else if (tokens[0] == "save") {
+                editor.save();
+                std::cout << "Datei gespeichert.\n";
+            }
+        }
+        return CommandResult(CommandResult::Status::Success, "File edited successfully");
+    }
+
+    std::string getHelp() const override { return "Oeffnet einen einfachen Texteditor"; }
     std::string getUsage() const override { return "edit <dateiname>"; }
     bool validateArgs(const std::vector<std::string>& args) const override {
         return !args.empty() && args.size() == 1;
@@ -321,8 +387,9 @@ public:
         helpText(std::move(help)),
         usageText(std::move(usage)) {}
 
-    void execute(const std::vector<std::string>& args) override {
+    CommandResult execute(const std::vector<std::string>& args) override {
         executeFunc(args);
+        return CommandResult(CommandResult::Status::Success, "Command executed");
     }
 
     std::string getHelp() const override {
@@ -338,71 +405,209 @@ public:
     }
 };
 
+class TerminalUI {
+private:
+    const int WINDOW_WIDTH = 120;
+    const int WINDOW_HEIGHT = 30;
+    
+    struct Theme {
+        int backgroundColor;
+        int textColor;
+        int highlightColor;
+        int errorColor;
+        int successColor;
+        int promptColor;
+        int headerColor;
+        std::string promptSymbol;
+        std::string headerBorder;
+        std::string footerBorder;
+        std::string separator;
+    };
+    
+    Theme currentTheme = {
+        0,      
+        15,     
+        14,     
+        12,     
+        10,     
+        11,     
+        13,     
+        "λ",    
+        "═",    
+        "─",    
+        "│"     
+    };
+
+public:
+    void initializeWindow() {
+        SetConsoleOutputCP(CP_UTF8);
+        SetConsoleCP(CP_UTF8);
+        
+        std::string cmd = "mode con: cols=" + std::to_string(WINDOW_WIDTH) + 
+                         " lines=" + std::to_string(WINDOW_HEIGHT);
+        system(cmd.c_str());
+        
+        SetConsoleTitleA("Aether Terminal - Modern CLI");
+        clearScreen();
+    }
+
+    void drawHeader() {
+        ConsoleColor::set(currentTheme.headerColor, currentTheme.backgroundColor);
+        
+        
+        std::cout << "╔" << std::string(WINDOW_WIDTH - 2, currentTheme.headerBorder[0]) << "╗\n";
+        
+        
+        std::string title = " AETHER TERMINAL ";
+        std::string subtitle = " Modern Command Line Interface ";
+        
+        drawCenteredText(title, true);
+        drawCenteredText(subtitle, false);
+        
+        
+        std::cout << "╚" << std::string(WINDOW_WIDTH - 2, currentTheme.headerBorder[0]) << "╝\n";
+        
+        
+        drawStatusBar();
+        
+        resetColors();
+    }
+
+    void drawPrompt(const std::string& currentDir) {
+        
+        ConsoleColor::set(currentTheme.promptColor, currentTheme.backgroundColor);
+        std::cout << "\n" << currentTheme.promptSymbol << " ";
+        
+        ConsoleColor::set(currentTheme.highlightColor, currentTheme.backgroundColor);
+        std::cout << shortenPath(currentDir);
+        
+        
+        std::string gitBranch = getGitBranch();
+        if (!gitBranch.empty()) {
+            ConsoleColor::set(currentTheme.successColor, currentTheme.backgroundColor);
+            std::cout << " [" << gitBranch << "]";
+        }
+        
+        ConsoleColor::set(currentTheme.textColor, currentTheme.backgroundColor);
+        std::cout << " → ";
+    }
+
+    void drawError(const std::string& message) {
+        std::cout << "\n";
+        ConsoleColor::set(currentTheme.errorColor, currentTheme.backgroundColor);
+        std::cout << "✘ ERROR: " << message << "\n";
+        resetColors();
+    }
+
+    void drawSuccess(const std::string& message) {
+        std::cout << "\n";
+        ConsoleColor::set(currentTheme.successColor, currentTheme.backgroundColor);
+        std::cout << "✓ SUCCESS: " << message << "\n";
+        resetColors();
+    }
+
+    void drawInfo(const std::string& message) {
+        std::cout << "\n";
+        ConsoleColor::set(currentTheme.highlightColor, currentTheme.backgroundColor);
+        std::cout << "ℹ INFO: " << message << "\n";
+        resetColors();
+    }
+
+    void clearScreen() {
+        system("cls");
+    }
+
+private:
+    void drawStatusBar() {
+        ConsoleColor::set(currentTheme.promptColor, currentTheme.backgroundColor);
+        
+        
+        MEMORYSTATUSEX memInfo;
+        memInfo.dwLength = sizeof(MEMORYSTATUSEX);
+        GlobalMemoryStatusEx(&memInfo);
+        int memoryUsage = static_cast<int>(memInfo.dwMemoryLoad);
+        
+        
+        auto now = std::chrono::system_clock::now();
+        auto time = std::chrono::system_clock::to_time_t(now);
+        std::stringstream ss;
+        ss << std::put_time(std::localtime(&time), "%H:%M:%S");
+        
+        
+        std::string status = " RAM: " + std::to_string(memoryUsage) + "% | " + ss.str();
+        std::cout << std::string(WINDOW_WIDTH - status.length() - 1, ' ') << status << "\n";
+    }
+
+    std::string getGitBranch() {
+        return "";
+    }
+
+    void drawCenteredText(const std::string& text, bool isTitle) {
+        int padding = (WINDOW_WIDTH - 2 - text.length()) / 2;
+        std::cout << currentTheme.separator;
+        
+        if (isTitle) {
+            ConsoleColor::set(currentTheme.highlightColor, currentTheme.backgroundColor);
+        }
+        
+        std::cout << std::string(padding, ' ') << text 
+                 << std::string(WINDOW_WIDTH - 2 - padding - text.length(), ' ');
+        
+        std::cout << currentTheme.separator << "\n";
+    }
+
+    std::string shortenPath(const std::string& path) {
+        if (path.length() <= 40) return path;
+        
+        size_t pos = path.find_last_of("\\/", path.length() - 2);
+        if (pos != std::string::npos) {
+            return "..." + path.substr(pos);
+        }
+        return path;
+    }
+
+    void resetColors() {
+        ConsoleColor::set(currentTheme.textColor, currentTheme.backgroundColor);
+    }
+};
+
 class Terminal {
 private:
+    TerminalUI ui;
     std::map<std::string, std::unique_ptr<Command>> commands;
 
     void executeCommand(const std::string& command) {
         try {
-            std::vector<std::string> args;
-            std::istringstream iss(command);
-            std::string arg;
-            while (iss >> arg) {
-                args.push_back(arg);
-            }
-
+            auto start = std::chrono::high_resolution_clock::now();
+            
+            std::vector<std::string> args = parseCommand(command);
             if (args.empty()) return;
 
             std::string cmd = args[0];
             args.erase(args.begin());
 
+            
+            ui.drawInfo("Führe aus: " + command);
+
             if (aliases.find(cmd) != aliases.end()) {
                 cmd = aliases[cmd];
             }
 
-            static const std::map<std::string, std::function<void(const std::vector<std::string>&)>> commandMap = {
-                {"cls", [this](const auto& args) { system("cls"); }},
-                {"echo", [this](const auto& args) { handleEcho(args); }},
-                {"time", [this](const auto& args) { displayCurrentTime(); }},
-                {"calc", [this](const auto& args) { system("start calc"); }},
-                {"history", [this](const auto& args) { printHistory(); }},
-                {"alias", [this](const auto& args) { printAliases(); }},
-                {"setalias", [this](const auto& args) { setAlias(args); }},
-                {"create", [this](const auto& args) { createFile(args); }},
-                {"delete", [this](const auto& args) { deleteFile(args); }},
-                {"list", [this](const auto& args) { listFiles(); }},
-                {"ping", [this](const auto& args) { pingHost(args); }},
-                {"random", [this](const auto& args) { generateRandomNumber(); }},
-                {"sleep", [this](const auto& args) { sleepForSeconds(args); }},
-                {"theme", [this](const auto& args) { switchTheme(); }},
-                {"writefile", [this](const auto& args) { writeToFile(args); }},
-                {"readfile", [this](const auto& args) { readFromFile(args); }},
-                {"encrypt", [this](const auto& args) { encryptFile(args); }},
-                {"decrypt", [this](const auto& args) { decryptFile(args); }},
-                {"compress", [this](const auto& args) { compressFile(args); }},
-                {"decompress", [this](const auto& args) { decompressFile(args); }},
-                {"search", [this](const auto& args) { searchFiles(args); }},
-                {"schedule", [this](const auto& args) { scheduleCommand(args); }},
-                {"task", [this](const auto& args) { manageTask(args); }},
-                {"network", [this](const auto& args) { showNetworkInfo(); }},
-                {"sysinfo", [this](const auto& args) { showSystemInfo(); }},
-                {"weather", [this](const auto& args) { showWeather(args); }},
-                {"math", [this](const auto& args) { performMathOperation(args); }},
-                {"sort", [this](const auto& args) { sortItems(args); }},
-                {"base64", [this](const auto& args) { base64Operation(args); }},
-                {"hash", [this](const auto& args) { hashString(args); }}
-            };
-
-            auto it = commandMap.find(cmd);
-            if (it != commandMap.end()) {
-                it->second(args);
-            } else if (commands.find(cmd) != commands.end()) {
-                commands[cmd]->execute(args);
+            if (auto it = commands.find(cmd); it != commands.end()) {
+                if (it->second->validateArgs(args)) {
+                    it->second->execute(args);
+                    
+                    auto end = std::chrono::high_resolution_clock::now();
+                    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
+                    ui.drawSuccess("Befehl in " + std::to_string(duration.count()) + " ms ausgeführt");
+                } else {
+                    throw std::runtime_error("Ungültige Argumente. Verwendung: " + it->second->getUsage());
+                }
             } else {
                 throw std::runtime_error("Unbekannter Befehl: " + cmd);
             }
         } catch (const std::exception& e) {
-            std::cerr << "Fehler bei der Ausführung: " << e.what() << std::endl;
+            ui.drawError(e.what());
         }
     }
 
@@ -435,6 +640,153 @@ private:
     std::vector<std::thread> workerThreads;
     ThreadPool threadPool{4};
 
+    std::vector<std::string> parseCommand(const std::string& commandLine) {
+        std::vector<std::string> args;
+        std::string currentArg;
+        bool inQuotes = false;
+        
+        for (char c : commandLine) {
+            if (c == '"') {
+                inQuotes = !inQuotes;
+                continue;
+            }
+            
+            if (c == ' ' && !inQuotes) {
+                if (!currentArg.empty()) {
+                    args.push_back(currentArg);
+                    currentArg.clear();
+                }
+            } else {
+                currentArg += c;
+            }
+        }
+        
+        if (!currentArg.empty()) {
+            args.push_back(currentArg);
+        }
+        
+        return args;
+    }
+
+    void initializeCommands() {
+        commands["help"] = std::make_unique<HelpCommand>(commands);
+        
+        commands["cls"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args [[maybe_unused]]) { system("cls"); },
+            "Löscht den Bildschirminhalt",
+            "cls"
+        );
+
+        commands["echo"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { 
+                for (const auto& arg : args) std::cout << arg << " ";
+                std::cout << std::endl;
+            },
+            "Gibt Text aus",
+            "echo <text>"
+        );
+
+        commands["time"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { displayCurrentTime(); },
+            "Zeigt die aktuelle Zeit an",
+            "time"
+        );
+
+        commands["history"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { printHistory(); },
+            "Zeigt den Befehlsverlauf an",
+            "history"
+        );
+
+        commands["writefile"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { writeToFile(args); },
+            "Schreibt Text in eine Datei",
+            "writefile <dateiname> <text>"
+        );
+
+        commands["readfile"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { readFromFile(args); },
+            "Liest den Inhalt einer Datei",
+            "readfile <dateiname>"
+        );
+
+        commands["create"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { createFile(args); },
+            "Erstellt eine neue Datei",
+            "create <dateiname>"
+        );
+
+        commands["delete"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { deleteFile(args); },
+            "Löscht eine Datei",
+            "delete <dateiname>"
+        );
+
+        commands["list"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { listFiles(); },
+            "Listet Dateien im aktuellen Verzeichnis auf",
+            "list"
+        );
+
+        commands["encrypt"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { encryptFile(args); },
+            "Verschlüsselt eine Datei",
+            "encrypt <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["decrypt"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { decryptFile(args); },
+            "Entschlüsselt eine Datei",
+            "decrypt <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["compress"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { compressFile(args); },
+            "Komprimiert eine Datei",
+            "compress <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["decompress"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { decompressFile(args); },
+            "Dekomprimiert eine Datei",
+            "decompress <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["search"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { searchFiles(args); },
+            "Sucht nach Dateien mit einem bestimmten Muster",
+            "search <suchmuster>"
+        );
+
+        commands["ps"] = std::make_unique<ConcreteCommand>(
+            [](const auto&) { ProcessManager::listProcesses(); },
+            "Zeigt laufende Prozesse an",
+            "ps"
+        );
+
+        commands["kill"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { 
+                if (!args.empty()) ProcessManager::killProcess(args[0]); 
+            },
+            "Beendet einen Prozess",
+            "kill <pid>"
+        );
+
+        commands["benchmark"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { runBenchmark(); },
+            "Führt einen Systemtest durch",
+            "benchmark"
+        );
+
+        commands["stats"] = std::make_unique<ConcreteCommand>(
+            [](const auto&) { PerformanceMetrics::displayMetrics(); },
+            "Zeigt Leistungsmetriken an",
+            "stats"
+        );
+
+        commands["edit"] = std::make_unique<EditCommand>(*this);
+    }
+
 public:
     Terminal() : 
         taskManager(std::make_unique<TaskManager>()),
@@ -442,7 +794,7 @@ public:
             taskManager->run();
         })
     {
-        registerCommands();
+        initializeCommands();
     }
 
     ~Terminal() {
@@ -453,7 +805,10 @@ public:
     }
 
     void run() {
+        ui.initializeWindow();
+        ui.drawHeader();
         printWelcomeMessage();
+        
         loadCommandHistory();
         loadAliases();
         loadThemes();
@@ -461,25 +816,19 @@ public:
 
         std::string command;
         while (true) {
-            ConsoleColor::set(currentTheme["promptTextColor"], currentTheme["promptBgColor"]);
-            std::cout << "Aether > ";
-            ConsoleColor::set(currentTheme["defaultTextColor"], currentTheme["defaultBgColor"]);
-
+            ui.drawPrompt(fs::current_path().string());
             command = getCommandInput();
 
             if (command.empty()) continue;
 
             if (command == "exit") {
+                ui.drawInfo("Beende Terminal...");
                 saveAliases();
                 break;
             }
 
             addCommandToHistory(command);
-            auto start = std::chrono::high_resolution_clock::now();
             executeCommand(command);
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-            std::cout << "Befehl in " << duration << " ms ausgeführt." << std::endl;
         }
     }
 
@@ -535,25 +884,136 @@ public:
 private:
     void registerCommands() {
         commands["help"] = std::make_unique<HelpCommand>(commands);
+        
+        commands["cls"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args [[maybe_unused]]) { system("cls"); },
+            "Löscht den Bildschirminhalt",
+            "cls"
+        );
+
+        commands["echo"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { 
+                for (const auto& arg : args) std::cout << arg << " ";
+                std::cout << std::endl;
+            },
+            "Gibt Text aus",
+            "echo <text>"
+        );
+
+        commands["time"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { displayCurrentTime(); },
+            "Zeigt die aktuelle Zeit an",
+            "time"
+        );
+
+        commands["history"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { printHistory(); },
+            "Zeigt den Befehlsverlauf an",
+            "history"
+        );
+
+        commands["writefile"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { writeToFile(args); },
+            "Schreibt Text in eine Datei",
+            "writefile <dateiname> <text>"
+        );
+
+        commands["readfile"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { readFromFile(args); },
+            "Liest den Inhalt einer Datei",
+            "readfile <dateiname>"
+        );
+
+        commands["create"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { createFile(args); },
+            "Erstellt eine neue Datei",
+            "create <dateiname>"
+        );
+
+        commands["delete"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { deleteFile(args); },
+            "Löscht eine Datei",
+            "delete <dateiname>"
+        );
+
+        commands["list"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { listFiles(); },
+            "Listet Dateien im aktuellen Verzeichnis auf",
+            "list"
+        );
+
+        commands["encrypt"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { encryptFile(args); },
+            "Verschlüsselt eine Datei",
+            "encrypt <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["decrypt"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { decryptFile(args); },
+            "Entschlüsselt eine Datei",
+            "decrypt <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["compress"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { compressFile(args); },
+            "Komprimiert eine Datei",
+            "compress <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["decompress"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { decompressFile(args); },
+            "Dekomprimiert eine Datei",
+            "decompress <eingabedatei> <ausgabedatei>"
+        );
+
+        commands["search"] = std::make_unique<ConcreteCommand>(
+            [this](const auto& args) { searchFiles(args); },
+            "Sucht nach Dateien mit einem bestimmten Muster",
+            "search <suchmuster>"
+        );
+
+        commands["ps"] = std::make_unique<ConcreteCommand>(
+            [](const auto&) { ProcessManager::listProcesses(); },
+            "Zeigt laufende Prozesse an",
+            "ps"
+        );
+
+        commands["kill"] = std::make_unique<ConcreteCommand>(
+            [](const auto& args) { 
+                if (!args.empty()) ProcessManager::killProcess(args[0]); 
+            },
+            "Beendet einen Prozess",
+            "kill <pid>"
+        );
+
+        commands["benchmark"] = std::make_unique<ConcreteCommand>(
+            [this](const auto&) { runBenchmark(); },
+            "Führt einen Systemtest durch",
+            "benchmark"
+        );
+
+        commands["stats"] = std::make_unique<ConcreteCommand>(
+            [](const auto&) { PerformanceMetrics::displayMetrics(); },
+            "Zeigt Leistungsmetriken an",
+            "stats"
+        );
+
         commands["edit"] = std::make_unique<EditCommand>(*this);
-        initializeCommands();
     }
 
     void printWelcomeMessage() {
-        ConsoleColor::set(9, 0);
+        ConsoleColor::set(14, 0);
         std::cout << R"(
-         ___           _       _        
-        / _ \         | |     | |       
-       / /_\ \_ __ __| |_   _| | __ ___ 
-       |  _  | '_ \ / _` | | | | |/ _` |
-       | | | | | | | (_| | |_| | | (_| |
-       \_| |_/_| |_|\__,_|\__,_|_|\__,_|
-                                         
+    _    _____ _____ _   _ _____ ____  
+   / \  | ____|_   _| | | | ____|  _ \ 
+  / _ \ |  _|   | | | |_| |  _| | |_) |
+ / ___ \| |___  | | |  _  | |___|  _ < 
+/_/   \_\_____| |_| |_| |_|_____|_| \_\
         )" << std::endl;
-        ConsoleColor::set(7, 0);
-        std::cout << "Willkommen im fortgeschrittenen Aether Terminal.\n";
-        std::cout << "(C) 2024 CaydenDev. Lizenziert unter der MIT-Lizenz.\n";
-        std::cout << "Geben Sie 'help' ein, um eine Liste der Befehle anzuzeigen.\n" << std::endl;
+        
+        ui.drawInfo("Willkommen im Aether Terminal v1.0");
+        ui.drawInfo("Geben Sie 'help' ein für eine Liste der verfuegbaren Befehle");
+        std::cout << std::endl;
     }
 
     void loadCommandHistory() {
@@ -618,34 +1078,52 @@ private:
     }
 
     std::string getCommandInput() {
-        std::string command;
-        char ch;
-        while ((ch = _getch()) != '\r') {
-            if (ch == '\b') {
-                if (!command.empty()) {
-                    command.pop_back();
-                    std::cout << "\b \b";
+        std::string input;
+        int cursorPos = 0;
+        
+        while (true) {
+            if (_kbhit()) {
+                int ch = _getch();
+                
+                if (ch == 13) { 
+                    std::cout << '\n';
+                    return input;
                 }
-            } else if (ch == -32) {
-                char arrowKey = _getch();
-                if (arrowKey == 72 && historyIndex < (int)commandHistory.size() - 1) {
-                    historyIndex++;
-                    command = commandHistory[commandHistory.size() - 1 - historyIndex];
-                    std::cout << "\rAether > " << command << std::string(50, ' ');
-                    std::cout << "\rAether > " << command;
-                } else if (arrowKey == 80 && historyIndex >= 0) {
-                    historyIndex--;
-                    command = (historyIndex == -1) ? "" : commandHistory[commandHistory.size() - 1 - historyIndex];
-                    std::cout << "\rAether > " << command << std::string(50, ' ');
-                    std::cout << "\rAether > " << command;
+                else if (ch == 8) { 
+                    if (!input.empty() && cursorPos > 0) {
+                        input.erase(--cursorPos, 1);
+                        
+                        std::cout << "\b \b" << input.substr(cursorPos);
+                    }
                 }
-            } else {
-                command.push_back(ch);
-                std::cout << ch;
+                else if (ch == 224) { 
+                    ch = _getch();
+                    if (ch == 72) { 
+                        if (!commandHistory.empty() && historyIndex < commandHistory.size() - 1) {
+                            
+                            std::cout << "\r" << std::string(input.length() + 3, ' ');
+                            input = commandHistory[++historyIndex];
+                            cursorPos = input.length();
+                            ui.drawPrompt(fs::current_path().string());
+                            std::cout << input;
+                        }
+                    }
+                    else if (ch == 80) { 
+                        if (historyIndex > 0) {
+                            std::cout << "\r" << std::string(input.length() + 3, ' ');
+                            input = commandHistory[--historyIndex];
+                            cursorPos = input.length();
+                            ui.drawPrompt(fs::current_path().string());
+                            std::cout << input;
+                        }
+                    }
+                }
+                else if (ch >= 32 && ch <= 126) { 
+                    input.insert(cursorPos++, 1, (char)ch);
+                    std::cout << (char)ch;
+                }
             }
         }
-        std::cout << std::endl;
-        return command;
     }
 
     void addCommandToHistory(const std::string& command) {
@@ -705,9 +1183,9 @@ private:
             return;
         }
         if (fs::remove(args[0])) {
-            std::cout << "Datei '" << args[0] << "' gelöscht.\n";
+            std::cout << "Datei '" << args[0] << "' geloescht.\n";
         } else {
-            std::cerr << "Fehler: Datei '" << args[0] << "' konnte nicht gelöscht werden.\n";
+            std::cerr << "Fehler: Datei '" << args[0] << "' konnte nicht geloescht werden.\n";
         }
     }
 
@@ -740,13 +1218,13 @@ private:
             return;
         }
         int seconds = std::stoi(args[0]);
-        std::cout << "Schlafe für " << seconds << " Sekunden...\n";
+        std::cout << "Schlafe fuer " << seconds << " Sekunden...\n";
         std::this_thread::sleep_for(std::chrono::seconds(seconds));
         std::cout << "Aufgewacht!\n";
     }
 
     void switchTheme() {
-        std::cout << "Wählen Sie ein Theme: (1) Dunkel, (2) Hell, (3) Benutzerdefiniert\n";
+        std::cout << "Waehlen Sie ein Theme: (1) Dunkel, (2) Hell, (3) Benutzerdefiniert\n";
         std::string choice;
         std::getline(std::cin, choice);
         if (choice == "1") {
@@ -811,7 +1289,7 @@ private:
         std::ifstream inFile(args[0], std::ios::binary);
         std::ofstream outFile(args[1], std::ios::binary);
         if (!inFile || !outFile) {
-            std::cerr << "Fehler: Konnte Dateien nicht öffnen.\n";
+            std::cerr << "Fehler: Konnte Dateien nicht oeffnen.\n";
             return;
         }
         char ch;
@@ -819,7 +1297,7 @@ private:
             ch = ch ^ 0x5A;
             outFile.put(ch);
         }
-        std::cout << "Datei erfolgreich verschlüsselt.\n";
+        std::cout << "Datei erfolgreich verschluesselt.\n";
     }
 
     void decryptFile(const std::vector<std::string>& args) {
@@ -830,7 +1308,7 @@ private:
         std::ifstream inFile(args[0], std::ios::binary);
         std::ofstream outFile(args[1], std::ios::binary);
         if (!inFile || !outFile) {
-            std::cerr << "Fehler: Konnte Dateien nicht öffnen.\n";
+            std::cerr << "Fehler: Konnte Dateien nicht oeffnen.\n";
             return;
         }
         char ch;
@@ -838,7 +1316,7 @@ private:
             ch = ch ^ 0x5A;
             outFile.put(ch);
         }
-        std::cout << "Datei erfolgreich entschlüsselt.\n";
+        std::cout << "Datei erfolgreich entschluesselt.\n";
     }
 
     void compressFile(const std::vector<std::string>& args) {
@@ -849,12 +1327,12 @@ private:
         std::ifstream inFile(args[0], std::ios::binary);
         std::ofstream outFile(args[1], std::ios::binary);
         if (!inFile || !outFile) {
-            std::cerr << "Fehler: Konnte Dateien nicht öffnen.\n";
+            std::cerr << "Fehler: Konnte Dateien nicht oeffnen.\n";
             return;
         }
         
         char current;
-        char count = 0;
+        unsigned char count = 0;
         while (inFile.get(current)) {
             count = 1;
             char next;
@@ -878,7 +1356,7 @@ private:
         std::ifstream inFile(args[0], std::ios::binary);
         std::ofstream outFile(args[1], std::ios::binary);
         if (!inFile || !outFile) {
-            std::cerr << "Fehler: Konnte Dateien nicht öffnen.\n";
+            std::cerr << "Fehler: Konnte Dateien nicht oeffnen.\n";
             return;
         }
         
@@ -906,7 +1384,7 @@ private:
 
     void scheduleCommand(const std::vector<std::string>& args) {
         if (args.size() < 2) {
-            std::cout << "Verwendung: schedule <verzögerung_in_sekunden> <befehl>\n";
+            std::cout << "Verwendung: schedule <verzoegerung_in_sekunden> <befehl>\n";
             return;
         }
         int delay = std::stoi(args[0]);
@@ -918,7 +1396,7 @@ private:
             std::this_thread::sleep_for(std::chrono::seconds(delay));
             executeCommand(cmd);
         });
-        std::cout << "Befehl geplant, wird in " << delay << " Sekunden ausgeführt.\n";
+        std::cout << "Befehl geplant, wird in " << delay << " Sekunden ausgefuehrt.\n";
     }
 
     void manageTask(const std::vector<std::string>& args) {
@@ -934,7 +1412,7 @@ private:
             });
             std::cout << "Hintergrundaufgabe gestartet: " << taskCommand << std::endl;
         } else if (args[0] == "list") {
-            std::cout << "Hintergrundaufgaben-Verwaltung noch nicht vollständig implementiert.\n";
+            std::cout << "Hintergrundaufgaben-Verwaltung noch nicht vollstaendig implementiert.\n";
         } else {
             std::cout << "Ungültige Task-Operation.\n";
         }
@@ -954,8 +1432,8 @@ private:
             return;
         }
         std::string city = args[0];
-        std::cout << "Wetterinformationen für " << city << " werden abgerufen...\n";
-        std::cout << "Wetterabfrage-Funktionalität noch nicht vollständig implementiert.\n";
+        std::cout << "Wetterinformationen fuer " << city << " werden abgerufen...\n";
+        std::cout << "Wetterabfrage-Funktionalitaet noch nicht vollstaendig implementiert.\n";
     }
 
     void performMathOperation(const std::vector<std::string>& args) {
@@ -980,7 +1458,7 @@ private:
             result = num1 / num2;
         }
         else {
-            std::cout << "Ungültiger Operator.\n";
+            std::cout << "Ungueltige Operation.\n";
             return;
         }
 
@@ -1017,7 +1495,7 @@ private:
         } else if (operation == "decode") {
             std::cout << "Base64-Dekodierung: " << base64_decode(input) << std::endl;
         } else {
-            std::cout << "Ungültige Operation. Verwenden Sie 'encode' oder 'decode'.\n";
+            std::cout << "Ungueltige Operation. Verwenden Sie 'encode' oder 'decode'.\n";
         }
     }
 
@@ -1118,34 +1596,6 @@ private:
         return decoded;
     }
 
-    void initializeCommands() {
-        commands["ps"] = std::make_unique<ConcreteCommand>(
-            [](const auto& args) { ProcessManager::listProcesses(); },
-            "Lists all running processes",
-            "ps"
-        );
-
-        commands["kill"] = std::make_unique<ConcreteCommand>(
-            [](const auto& args) { 
-                if (!args.empty()) ProcessManager::killProcess(args[0]); 
-            },
-            "Kills a process with the specified PID",
-            "kill <pid>"
-        );
-
-        commands["benchmark"] = std::make_unique<ConcreteCommand>(
-            [this](const auto& args) { runBenchmark(); },
-            "Runs a system benchmark",
-            "benchmark"
-        );
-
-        commands["stats"] = std::make_unique<ConcreteCommand>(
-            [](const auto& args) { PerformanceMetrics::displayMetrics(); },
-            "Displays performance metrics",
-            "stats"
-        );
-    }
-
     void runBenchmark() {
         auto start = std::chrono::high_resolution_clock::now();
         
@@ -1180,11 +1630,222 @@ private:
                 std::chrono::duration_cast<std::chrono::microseconds>(end - start));
         });
     }
-};
 
-void EditCommand::execute(const std::vector<std::string>& args) {
-    terminal.editFile(args);
-}
+    class CommandHistory {
+    public:
+        void add(const std::string& command) {
+            if (command.empty() || command == "exit") return;
+            
+            history.push_back(command);
+            if (history.size() > maxHistory) {
+                history.pop_front();
+            }
+            save();
+        }
+        
+        std::string searchBackward(const std::string& prefix) {
+            for (auto it = history.rbegin(); it != history.rend(); ++it) {
+                if (it->find(prefix) == 0) {
+                    return *it;
+                }
+            }
+            return prefix;
+        }
+        
+        void save() {
+            std::ofstream file(historyFile);
+            for (const auto& cmd : history) {
+                file << cmd << '\n';
+            }
+        }
+        
+        void load() {
+            std::ifstream file(historyFile);
+            std::string line;
+            while (std::getline(file, line)) {
+                add(line);
+            }
+        }
+
+    private:
+        std::deque<std::string> history;
+        const size_t maxHistory = 1000;
+        const std::string historyFile = "command_history.txt";
+    };
+
+    class CommandInput {
+    private:
+        const std::map<std::string, std::unique_ptr<Command>>& commands;
+        std::vector<std::string>& commandHistory;
+        size_t& historyIndex;
+        TerminalUI& ui;
+
+        void handleBackspace(std::string& input, size_t& cursorPos) {
+            if (!input.empty() && cursorPos > 0) {
+                input.erase(--cursorPos, 1);
+                std::cout << "\b \b";
+            }
+        }
+
+        void handleAutoComplete(std::string& input, size_t& cursorPos) {
+            std::string prefix = input.substr(0, cursorPos);
+            std::vector<std::string> matches;
+            
+            
+            for (const auto& [name, cmd] : commands) {
+                if (name.find(prefix) == 0) {
+                    matches.push_back(name);
+                }
+                
+                auto cmdCompletions = cmd->getCompletions(prefix);
+                matches.insert(matches.end(), cmdCompletions.begin(), cmdCompletions.end());
+            }
+
+            if (matches.empty()) {
+                return;
+            }
+
+            if (matches.size() == 1) {
+                
+                input = matches[0];
+                cursorPos = input.length();
+                redrawLine(input);
+            } else {
+                
+                std::string commonPrefix = findCommonPrefix(matches);
+                if (commonPrefix.length() > prefix.length()) {
+                    input = commonPrefix + input.substr(cursorPos);
+                    cursorPos = commonPrefix.length();
+                    redrawLine(input);
+                }
+                
+                showCompletions(matches);
+            }
+        }
+
+    public:
+        CommandInput(
+            const std::map<std::string, std::unique_ptr<Command>>& cmds,
+            std::vector<std::string>& history,
+            size_t& hIndex,
+            TerminalUI& terminalUI
+        ) : commands(cmds),
+            commandHistory(history),
+            historyIndex(hIndex),
+            ui(terminalUI) {}
+        
+        std::string getInput() {
+            std::string input;
+            char ch;
+            size_t cursorPos = 0;
+            
+            while ((ch = _getch()) != 13) {  
+                if (ch == '\t') {  
+                    handleAutoComplete(input, cursorPos);
+                } else if (ch == 8) {  
+                    handleBackspace(input, cursorPos);
+                } else if (ch == 224) {  
+                    ch = _getch();
+                    if (ch == 72) {  
+                        if (!commandHistory.empty() && historyIndex < commandHistory.size() - 1) {
+                            std::cout << "\r" << std::string(input.length() + 3, ' ');
+                            input = commandHistory[++historyIndex];
+                            cursorPos = input.length();
+                            ui.drawPrompt(fs::current_path().string());
+                            std::cout << input;
+                        }
+                    }
+                    else if (ch == 80) {  
+                        if (historyIndex > 0) {
+                            std::cout << "\r" << std::string(input.length() + 3, ' ');
+                            input = commandHistory[--historyIndex];
+                            cursorPos = input.length();
+                            ui.drawPrompt(fs::current_path().string());
+                            std::cout << input;
+                        }
+                    }
+                }
+                else if (ch >= 32 && ch <= 126) {  
+                    input.insert(cursorPos++, 1, (char)ch);
+                    std::cout << (char)ch;
+                }
+            }
+            
+            return input;
+        }
+
+    private:
+        void showCompletions(const std::vector<std::string>& completions) {
+            std::cout << "\n";
+            size_t maxLength = 0;
+            for (const auto& c : completions) {
+                maxLength = std::max(maxLength, c.length());
+            }
+
+            size_t columns = std::max(size_t{1}, 80 / (maxLength + 2));
+            size_t col = 0;
+
+            for (const auto& completion : completions) {
+                std::cout << std::left << std::setw(maxLength + 2) << completion;
+                if (++col >= columns) {
+                    std::cout << "\n";
+                    col = 0;
+                }
+            }
+            if (col != 0) std::cout << "\n";
+        }
+
+        void redrawLine(const std::string& input) {
+            std::cout << "\r" << std::string(input.length() + 3, ' ') << "\r";
+            ui.drawPrompt(fs::current_path().string());
+            std::cout << input;
+        }
+
+        std::string findCommonPrefix(const std::vector<std::string>& strings) {
+            if (strings.empty()) return "";
+            
+            std::string prefix = strings[0];
+            for (const auto& s : strings) {
+                while (s.find(prefix) != 0) {
+                    prefix = prefix.substr(0, prefix.length() - 1);
+                }
+            }
+            return prefix;
+        }
+    };
+
+    class CommandCache {
+    public:
+        std::optional<std::string> get(const std::string& key) {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            auto it = cache.find(key);
+            if (it != cache.end() && !isExpired(it->second)) {
+                return it->second.result;
+            }
+            return std::nullopt;
+        }
+        
+        void put(const std::string& key, const std::string& result) {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            cache[key] = CacheEntry{result, std::chrono::system_clock::now()};
+        }
+
+    private:
+        struct CacheEntry {
+            std::string result;
+            std::chrono::system_clock::time_point timestamp;
+        };
+        
+        bool isExpired(const CacheEntry& entry) {
+            auto now = std::chrono::system_clock::now();
+            return std::chrono::duration_cast<std::chrono::minutes>(
+                now - entry.timestamp).count() > 5;  
+        }
+        
+        std::mutex cacheMutex;
+        std::map<std::string, CacheEntry> cache;
+    };
+};
 
 int main() {
     Terminal terminal;
